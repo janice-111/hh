@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<!--
+================================================================================
+  FIREBASE SETUP (~10 minutes, one-time)
+================================================================================
+
+  1. Go to https://console.firebase.google.com  (you're already logged in)
+  2. Click "Add project" — name it anything (e.g., "nomophobia"). Skip Analytics.
+  3. Once created, click the </> Web icon to "Add an app". Register it. Skip Hosting.
+  4. Firebase shows you a `firebaseConfig` object — copy the WHOLE object,
+     then paste it into this file where it says "PASTE_YOUR_FIREBASE_CONFIG_HERE".
+
+  5. In the left sidebar: Build → Realtime Database → Create Database
+  6. Choose any location. **IMPORTANT: pick "Start in test mode"**.
+  7. Done. Reload this page in presenter mode and it works.
+
+  After 30 days, test mode rules expire. Replace them with these in
+  Realtime Database → Rules tab:
+
+    {
+      "rules": {
+        "sessions": {
+          "$sid": { ".read": true, ".write": true }
+        }
+      }
+    }
+
+================================================================================
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nomophobia Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <style>
+        :root {
+            --bg: #F7F9FC;
+            --bg-stage-1: #F4FBF6;  /* faint green tint */
+            --bg-stage-2: #FDFAF0;  /* faint yellow tint */
+            --bg-stage-3: #FDF5F4;  /* faint red tint */
+            --text: #1C1C1E;
+            --green: #34C759;
+            --yellow: #FFCC00;
+            --orange: #FF9500;
+            --red: #FF3B30;
+            --white: #FFFFFF;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            transition: background-color 0.6s ease;
+        }
+
+        #app {
+            width: 100%;
+            max-width: 440px;
+            height: 100%;
+            max-height: 850px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+        }
+
+        /* Top bar: back + progress */
+        .top-bar {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        .back-btn {
+            background: rgba(0,0,0,0.05);
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+        }
+        .back-btn:hover { background: rgba(0,0,0,0.1); }
+        .back-btn:active { transform: scale(0.92); }
+        .back-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .progress-container {
+            flex-grow: 1;
+            height: 6px;
+            background: #E5E5EA;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--green);
+            transition: width 0.5s ease, background-color 0.5s ease;
+            border-radius: 10px;
+        }
+
+        .progress-text {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #8E8E93;
+            flex-shrink: 0;
+            min-width: 36px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #card-container {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Y2K-flavored card with subtle gloss */
+        .card {
+            background: var(--white);
+            border-radius: 28px;
+            padding: 24px 20px;
+            box-shadow: 
+                0 16px 40px rgba(0, 0, 0, 0.06),
+                0 2px 8px rgba(0, 0, 0, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 5px;
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            border: 2px solid transparent;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .card::-webkit-scrollbar { display: none; }
+        
+        /* Glossy highlight overlay — Y2K candy gloss */
+        .card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 45%;
+            background: linear-gradient(
+                180deg,
+                rgba(255, 255, 255, 0.55) 0%,
+                rgba(255, 255, 255, 0.0) 100%
+            );
+            border-radius: 28px 28px 50% 50% / 28px 28px 18% 18%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .card > * { position: relative; z-index: 1; }
+
+        /* Slide animations */
+        .slide-in {
+            animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+        }
+        .slide-out {
+            animation: slideOutLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(110%) rotate(3deg); opacity: 0; }
+            to { transform: translateX(0) rotate(0); opacity: 1; }
+        }
+        @keyframes slideOutLeft {
+            from { transform: translateX(0) rotate(0); opacity: 1; }
+            to { transform: translateX(-110%) rotate(-3deg); opacity: 0; }
+        }
+
+        /* Emergency flash for Zombie result */
+        @keyframes emergency-flash {
+            0%, 100% { box-shadow: 0 16px 40px rgba(255, 59, 48, 0.15); border-color: rgba(255, 59, 48, 0.3); }
+            50% { box-shadow: 0 16px 40px rgba(255, 59, 48, 0.4); border-color: rgba(255, 59, 48, 0.8); }
+        }
+        .flash-card {
+            animation: emergency-flash 1.6s infinite ease-in-out !important;
+        }
+
+        .stage-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #8E8E93;
+            margin-bottom: 5px;
+            font-weight: 800;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .giant-emoji {
+            font-size: 4rem;
+            text-align: center;
+            margin: 5px 0 10px 0;
+            filter: drop-shadow(0 6px 12px rgba(0,0,0,0.12)) drop-shadow(0 0 20px rgba(255,255,255,0.4));
+            animation: float 3.5s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .question-title {
+            font-size: 1.45rem;
+            font-weight: 800;
+            margin: 0 0 8px 0;
+            line-height: 1.25;
+            text-align: center;
+            flex-shrink: 0;
+            letter-spacing: -0.01em;
+        }
+
+        .question-desc {
+            font-size: 1rem;
+            color: #636366;
+            margin: 0 0 20px 0;
+            line-height: 1.45;
+            font-weight: 500;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* Option buttons with colored side bar by danger level */
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: auto;
+            flex-shrink: 0;
+        }
+
+        .btn {
+            background: #F2F2F7;
+            border: 2px solid transparent;
+            border-radius: 18px;
+            padding: 14px 16px 14px 22px;
+            font-size: 0.95rem;
+            color: var(--text);
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s ease, transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.225), border-color 0.15s ease;
+            line-height: 1.35;
+            width: 100%;
+            position: relative;
+            font-family: inherit;
+        }
+
+        /* Danger-level side bar (subtle but readable) */
+        .btn[data-key="A"]::before,
+        .btn[data-key="B"]::before,
+        .btn[data-key="C"]::before,
+        .btn[data-key="D"]::before {
+            content: "";
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 60%;
+            border-radius: 4px;
+        }
+        .btn[data-key="A"]::before { background: var(--green); }
+        .btn[data-key="B"]::before { background: var(--yellow); }
+        .btn[data-key="C"]::before { background: var(--orange); }
+        .btn[data-key="D"]::before { background: var(--red); }
+
+        .btn:hover { background: #E5E5EA; transform: translateY(-2px); }
+        .btn:active { transform: scale(0.96); background: #D1D1D6; }
+
+        /* Selection confirmation pulse */
+        .btn.selected {
+            background: #FFF3B0 !important;
+            border-color: var(--text) !important;
+            transform: scale(1.02) !important;
+        }
+
+        /* Keyboard hint badge */
+        .kbd-hint {
+            display: none;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.65rem;
+            color: #8E8E93;
+            background: rgba(0,0,0,0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+        @media (hover: hover) and (pointer: fine) {
+            .kbd-hint { display: inline-block; }
+            .btn { padding-right: 50px; }
+        }
+
+        /* Start / Result */
+        .center-text { text-align: center; }
+        .start-btn { 
+            background: var(--text); 
+            color: var(--white); 
+            text-align: center; 
+            font-size: 1.15rem;
+            padding: 16px;
+            justify-content: center;
+            margin-top: 20px;
+            padding-left: 16px;
+        }
+        .start-btn::before { display: none !important; }
+        .start-btn:hover { background: #000; color: #FFF; }
+        
+        .result-box {
+            background: rgba(255, 255, 255, 0.6);
+            padding: 16px;
+            border-radius: 16px;
+            margin: 15px 0;
+            border: 1px solid currentColor;
+            flex-shrink: 0;
+        }
+        
+        .dependency-level {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+            opacity: 0.8;
+        }
+
+        .snarky-copy { 
+            font-style: italic; 
+            font-weight: 600; 
+            font-size: 1rem; 
+            line-height: 1.45;
+        }
+
+        .choices-trail {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin: 10px 0 5px 0;
+            flex-wrap: wrap;
+        }
+        .choice-dot {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: var(--white);
+        }
+        .choice-dot.A { background: var(--green); }
+        .choice-dot.B { background: var(--yellow); color: var(--text); }
+        .choice-dot.C { background: var(--orange); }
+        .choice-dot.D { background: var(--red); }
+        
+        .presenter-toggle {
+            background: transparent;
+            border: 1.5px dashed currentColor;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            color: inherit;
+            font-family: inherit;
+            transition: background 0.15s ease;
+        }
+        .presenter-toggle:hover { background: rgba(255,255,255,0.4); }
+
+        .presenter-note {
+            background: rgba(255, 255, 255, 0.4);
+            border: 1.5px dashed currentColor;
+            padding: 12px 15px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+            line-height: 1.4;
+            flex-shrink: 0;
+            display: none;
+        }
+        .presenter-note.open { display: block; }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+            margin-top: auto;
+        }
+        .action-row .start-btn { flex: 1; margin-top: 0; }
+        .share-btn {
+            background: transparent !important;
+            border: 2px solid currentColor !important;
+            width: 56px;
+            flex-shrink: 0;
+            padding: 0 !important;
+            font-size: 1.3rem;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--text);
+            color: var(--white);
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ====== MULTIPLAYER MODE ====== */
+
+        /* Session badge on audience welcome */
+        .session-badge {
+            background: linear-gradient(135deg, #FFE066, #FFCC00);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.3);
+        }
+        .session-badge .dot {
+            width: 8px; height: 8px;
+            background: var(--red);
+            border-radius: 50%;
+            animation: live-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes live-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.3); }
+        }
+
+        /* Presenter dashboard */
+        body.presenter #app {
+            max-width: 1100px;
+            max-height: none;
+            padding: 24px;
+        }
+        body.presenter .card {
+            padding: 32px 36px;
+            border-radius: 32px;
+        }
+        body.presenter .card::before { display: none; }
+
+        .dash-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 2px dashed #E5E5EA;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .dash-code-block { display: flex; align-items: center; gap: 20px; }
+        .dash-qr {
+            background: white;
+            padding: 8px;
+            border-radius: 14px;
+            line-height: 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            flex-shrink: 0;
+        }
+        .dash-qr img, .dash-qr canvas {
+            display: block;
+            width: 120px;
+            height: 120px;
+        }
+        .dash-code-text { font-size: 0.85rem; color: #8E8E93; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .dash-code-number {
+            font-size: 4rem;
+            font-weight: 900;
+            letter-spacing: 8px;
+            line-height: 1;
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+            margin-top: 4px;
+        }
+        .dash-url { font-size: 0.85rem; color: #636366; font-weight: 600; margin-top: 6px; word-break: break-all; max-width: 280px; }
+        .dash-stats { text-align: right; }
+        .dash-stat-num {
+            font-size: 3rem;
+            font-weight: 900;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .dash-stat-label { font-size: 0.85rem; color: #8E8E93; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .dash-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(52, 199, 89, 0.15);
+            color: #1D7C3D;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            margin-top: 8px;
+        }
+        .dash-status .dot {
+            width: 6px; height: 6px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: live-pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Distribution bars per question */
+        .dist-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 8px 0 20px 0;
+        }
+        @media (max-width: 760px) { .dist-grid { grid-template-columns: 1fr; } }
+
+        .dist-card {
+            background: #F8F9FB;
+            border-radius: 16px;
+            padding: 14px 16px;
+        }
+        .dist-q-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .dist-q-label .emoji { font-size: 1.2rem; margin-right: 6px; }
+        .dist-q-count { font-size: 0.75rem; color: #8E8E93; font-weight: 700; }
+        .dist-bars {
+            display: flex;
+            height: 26px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #E5E5EA;
+        }
+        .dist-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: white;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .dist-bar.A { background: var(--green); }
+        .dist-bar.B { background: var(--yellow); color: var(--text); }
+        .dist-bar.C { background: var(--orange); }
+        .dist-bar.D { background: var(--red); }
+        .dist-bar.empty {
+            background: transparent;
+            color: #8E8E93;
+            font-style: italic;
+        }
+
+        /* Reveal button on dashboard */
+        .reveal-btn {
+            background: var(--text) !important;
+            color: var(--white) !important;
+            text-align: center !important;
+            justify-content: center;
+            padding: 18px !important;
+            font-size: 1.15rem !important;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .reveal-btn::before { display: none !important; }
+        .reveal-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Setup-needed warning */
+        .setup-warning {
+            background: rgba(255, 59, 48, 0.08);
+            border: 2px solid rgba(255, 59, 48, 0.3);
+            border-radius: 16px;
+            padding: 18px;
+            margin-top: 12px;
+            text-align: left;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        .setup-warning b { display: block; margin-bottom: 6px; font-size: 1rem; }
+        .setup-warning code {
+            background: rgba(0,0,0,0.08);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Menlo, monospace;
+            font-size: 0.85rem;
+        }
+
+        /* Presenter link on welcome */
+        .presenter-link {
+            margin-top: 18px;
+            font-size: 0.8rem;
+            color: #8E8E93;
+            text-decoration: none;
+            font-weight: 600;
+            opacity: 0.7;
+            cursor: pointer;
+            display: inline-block;
+        }
+        .presenter-link:hover { opacity: 1; text-decoration: underline; }
+
+        /* "Waiting" state when no audience yet */
+        .waiting-hint {
+            background: rgba(255, 204, 0, 0.12);
+            border-left: 4px solid var(--yellow);
+            padding: 16px 20px;
+            border-radius: 10px;
+            margin: 16px 0;
+            font-weight: 600;
+            color: #8B6F00;
+            text-align: center;
+        }
+        /* ====== END MULTIPLAYER MODE ====== */
+
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.15s !important;
+            }
+            .flash-card { animation: none !important; }
+            .giant-emoji { animation: none !important; }
+            .slide-in, .slide-out { animation: none !important; }
+        }
+
+        /* Small screen */
+        @media (max-height: 750px), (max-width: 400px) {
+            .card { padding: 18px 15px; }
+            .giant-emoji { font-size: 3rem; margin: 0 0 10px 0; }
+            .question-title { font-size: 1.25rem; margin: 0 0 5px 0; }
+            .question-desc { font-size: 0.9rem; margin: 0 0 15px 0; line-height: 1.3; }
+            .btn { padding: 12px 14px 12px 20px; font-size: 0.85rem; border-radius: 14px; }
+            .options { gap: 8px; }
+            .stage-title { font-size: 0.75rem; }
+            .start-btn { padding: 14px; font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <div class="top-bar" id="top-bar">
+            <button class="back-btn" id="back-btn" aria-label="Go back" onclick="goBack()">‹</button>
+            <div class="progress-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <div class="progress-text" id="progress-text">0 / 5</div>
+        </div>
+        <div id="card-container"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================================
+        // 🔥 PASTE_YOUR_FIREBASE_CONFIG_HERE 🔥
+        // Replace the empty strings below with values from your Firebase
+        // console (see setup instructions at the top of this file).
+        // ============================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyB4LnV7QQxUv7ljYDAY8t7MDFn233gVsGI",
+            authDomain: "test-5aad8.firebaseapp.com",
+            databaseURL: "https://test-5aad8-default-rtdb.firebaseio.com",  // ← 如果你的 RTDB 不在 us-central1,改成 Firebase 控制台显示的实际 URL
+            projectId: "test-5aad8",
+            storageBucket: "test-5aad8.firebasestorage.app",
+            messagingSenderId: "1064555779899",
+            appId: "1:1064555779899:web:219acb0d62dff17da9491e"
+        };
+
+        const FIREBASE_ENABLED = !!(firebaseConfig.apiKey && firebaseConfig.databaseURL);
+        let db = null;
+        if (FIREBASE_ENABLED) {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+            } catch (e) {
+                console.error('Firebase init failed:', e);
+            }
+        }
+
+        // Stable anonymous user id (per browser)
+        let myUserId = localStorage.getItem('nomo_uid');
+        if (!myUserId) {
+            myUserId = 'u_' + Math.random().toString(36).slice(2, 10);
+            localStorage.setItem('nomo_uid', myUserId);
+        }
+
+        // URL params
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get('mode') === 'presenter' ? 'presenter' : 'audience';
+        const currentSessionCode = params.get('session');
+        document.body.classList.add(mode);
+
+        // ============================================================
+        // Session helpers
+        // ============================================================
+        async function generateUniqueSessionCode() {
+            for (let i = 0; i < 12; i++) {
+                const code = String(1000 + Math.floor(Math.random() * 9000));
+                const snap = await db.ref(`sessions/${code}`).once('value');
+                if (!snap.exists()) return code;
+            }
+            return String(1000 + Math.floor(Math.random() * 9000));
+        }
+
+        async function createSession(code) {
+            await db.ref(`sessions/${code}`).set({
+                createdAt: firebase.database.ServerValue.TIMESTAMP,
+                active: true,
+                participants: {}
+            });
+        }
+
+        async function joinSession(code) {
+            if (!db) return;
+            try {
+                await db.ref(`sessions/${code}/participants/${myUserId}/joinedAt`)
+                    .set(firebase.database.ServerValue.TIMESTAMP);
+            } catch (e) {
+                console.warn('joinSession failed:', e);
+            }
+        }
+
+        async function submitAnswerToSession(code, qIdx, answer) {
+            if (!db) return;
+            try {
+                const updates = {};
+                updates[`sessions/${code}/participants/${myUserId}/answers/${qIdx}`] = answer;
+                updates[`sessions/${code}/participants/${myUserId}/lastSeen`] =
+                    firebase.database.ServerValue.TIMESTAMP;
+                await db.ref().update(updates);
+            } catch (e) {
+                console.warn('submitAnswer failed:', e);
+            }
+        }
+
+        function subscribeToSession(code, callback) {
+            if (!db) return () => {};
+            const ref = db.ref(`sessions/${code}/participants`);
+            const handler = ref.on('value', (snap) => callback(snap.val() || {}));
+            return () => ref.off('value', handler);
+        }
+
+        function getAudienceSessionUrl(code) {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('mode');
+            u.searchParams.set('session', code);
+            return u.toString();
+        }
+
+        function generateQR(targetUrl, sizePx) {
+            try {
+                if (typeof qrcode === 'undefined') return null;
+                const qr = qrcode(0, 'M');
+                qr.addData(targetUrl);
+                qr.make();
+                return qr.createImgTag(Math.max(4, Math.floor(sizePx / 30)), 0);
+            } catch (e) { return null; }
+        }
+
+        // Track presenter subscription so we can unsubscribe on reset
+        let presenterUnsubscribe = null;
+        let presenterSessionCode = null;
+        let latestParticipants = {};
+
+
+        const questions = [
+            {
+                stage: "Stage 1: The Tool",
+                emoji: "⏰",
+                title: "Morning Alarm Rings!",
+                desc: "What is your immediate move?",
+                opts: [
+                    { key: 'A', text: "Turn it off, stretch, and get up immediately. 🌅" },
+                    { key: 'B', text: "Turn it off and sleep for another 5 minutes. 😴" },
+                    { key: 'C', text: "Check WeChat messages with one eye open. 👁️" },
+                    { key: 'D', text: "Scroll short videos for 30 minutes. My bed is a trap. 🛏️" }
+                ],
+                color: "var(--green)",
+                bgTint: "var(--bg-stage-1)"
+            },
+            {
+                stage: "Stage 1: The Tool",
+                emoji: "🚽",
+                title: "Time for the Toilet!",
+                desc: "Your phone is completely dead. What do you do in the bathroom?",
+                opts: [
+                    { key: 'A', text: "Just do my business. It only takes 2 minutes anyway. ⏱️" },
+                    { key: 'B', text: "Stare at the wall and think about my future. 🧘‍♂️" },
+                    { key: 'C', text: "Read the shampoo bottle instructions very carefully. 🧴" },
+                    { key: 'D', text: "Refuse to go. I will hold it until my phone is charged! ⚡" }
+                ],
+                color: "var(--green)",
+                bgTint: "var(--bg-stage-1)"
+            },
+            {
+                stage: "Stage 2: The Habit",
+                emoji: "🍽️",
+                title: "Dinner Time!",
+                desc: "Your delicious food is ready, but you haven't found a video to watch yet.",
+                opts: [
+                    { key: 'A', text: "Focus on the food. It tastes great. 🥗" },
+                    { key: 'B', text: "Chat with my family or friends at the table. 🗣️" },
+                    { key: 'C', text: "Eat with a video, but any random video is fine. 📺" },
+                    { key: 'D', text: "Let the food freeze. I MUST find the perfect video first! 🧊" }
+                ],
+                color: "var(--yellow)",
+                bgTint: "var(--bg-stage-2)"
+            },
+            {
+                stage: "Stage 2: The Habit",
+                emoji: "🪫",
+                title: "The 5% Panic",
+                desc: "Your battery indicator turns red. You are outside.",
+                opts: [
+                    { key: 'A', text: "Cool. I will survive. 🧊" },
+                    { key: 'B', text: "Turn on 'Low Power Mode' and put it in my pocket. 🔋" },
+                    { key: 'C', text: "Ask everyone loudly: 'Do you have a power bank?!' 🆘" },
+                    { key: 'D', text: "Become a Wall Hugger. I live next to the socket now. 🔌" }
+                ],
+                color: "var(--yellow)",
+                bgTint: "var(--bg-stage-2)"
+            },
+            {
+                stage: "Stage 3: The Mind",
+                emoji: "😱",
+                title: "The Lost Phone",
+                desc: "You are already on the bus, but you realize you left your phone at home.",
+                opts: [
+                    { key: 'A', text: "'Free at last!' Let's enjoy the real world today. 🕊️" },
+                    { key: 'B', text: "A bit worried, but I can survive for a day. 🤔" },
+                    { key: 'C', text: "Feel completely empty. Where should I put my hands? 👐" },
+                    { key: 'D', text: "'I lost my soul.' Run off the bus and go back home NOW! 🏃‍♂️💨" }
+                ],
+                color: "var(--red)",
+                bgTint: "var(--bg-stage-3)"
+            }
+        ];
+
+        const results = {
+            'A': {
+                title: "The Time Traveler",
+                emoji: "🦕",
+                level: "Dependency Level: 0%",
+                copy: "Wait, are you from 1999? Do you even know what Wi-Fi is? You are too healthy. You have a real life, and honestly... it makes the rest of us look bad. Respect!",
+                theme: { bg: '#EAFBEF', text: '#14532D', border: '#86EFAC', accent: '#22C55E' }
+            },
+            'B': {
+                title: "The True Master",
+                emoji: "😎",
+                level: "Dependency Level: 20%",
+                copy: "Congratulations. You use your phone, but your phone doesn't use you. You only check it when you need to. You are the master of your own time.",
+                theme: { bg: '#EFF6FF', text: '#1E3A8A', border: '#93C5FD', accent: '#3B82F6' }
+            },
+            'C': {
+                title: "The Anxious Scroller",
+                emoji: "👀",
+                level: "Dependency Level: 70%",
+                copy: "You are standing on the edge of danger. You unlock your screen every 5 minutes just to check... nothing. Put the phone down and go talk to a real human.",
+                theme: { bg: '#FFFDF0', text: '#7A5B00', border: '#FCD34D', accent: '#F59E0B' }
+            },
+            'D': {
+                title: "The Digital Zombie",
+                emoji: "🧟‍♂️",
+                level: "Dependency Level: 100%",
+                copy: "Emergency! Your phone is your new brain. If the battery dies, you die. You are officially suffering from Nomophobia. You need a doctor, or at least a power bank.",
+                theme: { bg: '#FFF5F5', text: '#7F1D1D', border: '#FCA5A5', accent: '#EF4444', customClass: 'flash-card' }
+            },
+            'MIXED': {
+                title: "The Pretender",
+                emoji: "🤡",
+                level: "Dependency Level: ???",
+                copy: "You picked A sometimes to look cool, but we all know you sleep with your phone under your pillow. Stop lying to yourself! You love your screen.",
+                theme: { bg: '#FAF5FF', text: '#4C1D95', border: '#C4B5FD', accent: '#8B5CF6' }
+            }
+        };
+
+        let currentQ = -1;
+        let userChoices = [];
+        let isAnimating = false;
+
+        const container = document.getElementById('card-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const topBar = document.getElementById('top-bar');
+        const backBtn = document.getElementById('back-btn');
+        const toast = document.getElementById('toast');
+
+        function playFeedback() {
+            if (navigator.vibrate) navigator.vibrate(40);
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function renderStart() {
+            topBar.style.display = 'none';
+            document.body.style.backgroundColor = 'var(--bg)';
+
+            // If we're joining a session, mark ourselves as joined
+            if (currentSessionCode && FIREBASE_ENABLED) {
+                joinSession(currentSessionCode);
+            }
+
+            const sessionBadge = currentSessionCode
+                ? `<div class="session-badge"><span class="dot"></span>Joining session ${currentSessionCode}</div>`
+                : '';
+
+            const presenterLink = !currentSessionCode
+                ? `<a class="presenter-link" onclick="enterPresenterMode()">🎤 Presenter mode (live audience)</a>`
+                : '';
+
+            container.innerHTML = `
+                <div class="card slide-in center-text" style="justify-content: center;">
+                    ${sessionBadge}
+                    <div class="giant-emoji">📱</div>
+                    <h1 class="question-title" style="font-size: 2.1rem;">Who is the Boss?</h1>
+                    <p class="question-desc" style="margin-bottom:10px;">Are you the master of your phone, or is your phone the master of you?<br><br>Let's find out.</p>
+                    <button class="btn start-btn" onclick="playFeedback(); nextQuestion()">
+                        Start Test 🚀
+                    </button>
+                    ${presenterLink}
+                </div>
+            `;
+        }
+
+        function enterPresenterMode() {
+            const u = new URL(window.location.href);
+            u.searchParams.set('mode', 'presenter');
+            u.searchParams.delete('session');
+            window.location.href = u.toString();
+        }
+
+        function transition(callback) {
+            if (isAnimating) return;
+            isAnimating = true;
+            const currentCard = container.querySelector('.card');
+            if (currentCard) {
+                currentCard.classList.remove('slide-in');
+                currentCard.classList.add('slide-out');
+            }
+            setTimeout(() => {
+                callback();
+                isAnimating = false;
+            }, 400);
+        }
+
+        function nextQuestion(choice, btnEl) {
+            if (isAnimating) return;
+            if (choice) {
+                // Submit to Firebase BEFORE incrementing currentQ (since currentQ is the
+                // index of the question being answered right now)
+                if (currentSessionCode && FIREBASE_ENABLED) {
+                    submitAnswerToSession(currentSessionCode, currentQ, choice);
+                }
+                userChoices.push(choice);
+                playFeedback();
+                if (btnEl) {
+                    btnEl.classList.add('selected');
+                }
+                // Brief selection feedback before sliding
+                setTimeout(() => {
+                    transition(() => {
+                        currentQ++;
+                        if (currentQ < questions.length) renderQuestion();
+                        else renderResult();
+                    });
+                }, 180);
+            } else {
+                transition(() => {
+                    currentQ++;
+                    if (currentQ < questions.length) renderQuestion();
+                    else renderResult();
+                });
+            }
+        }
+
+        function goBack() {
+            if (isAnimating) return;
+            if (currentQ <= 0) {
+                // Back from first question = back to start
+                userChoices = [];
+                transition(() => {
+                    currentQ = -1;
+                    renderStart();
+                });
+                return;
+            }
+            userChoices.pop();
+            transition(() => {
+                currentQ--;
+                renderQuestion();
+            });
+        }
+
+        function renderQuestion() {
+            const q = questions[currentQ];
+            topBar.style.display = 'flex';
+            progressBar.style.width = `${((currentQ + 1) / questions.length) * 100}%`;
+            progressBar.style.backgroundColor = q.color;
+            progressText.textContent = `${currentQ + 1} / ${questions.length}`;
+            document.body.style.backgroundColor = q.bgTint;
+            backBtn.disabled = false;
+
+            let optionsHTML = '';
+            q.opts.forEach((opt, idx) => {
+                optionsHTML += `
+                    <button class="btn" data-key="${opt.key}" onclick="nextQuestion('${opt.key}', this)">
+                        ${opt.text}
+                        <span class="kbd-hint">${idx + 1}</span>
+                    </button>
+                `;
+            });
+
+            container.innerHTML = `
+                <div class="card slide-in">
+                    <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <div class="stage-title" style="color: ${q.color}">${q.stage}</div>
+                        <div class="giant-emoji">${q.emoji}</div>
+                        <h2 class="question-title">${q.title}</h2>
+                        <p class="question-desc">${q.desc}</p>
+                    </div>
+                    <div class="options">
+                        ${optionsHTML}
+                    </div>
+                </div>
+            `;
+            container.querySelector('.card').scrollTop = 0;
+        }
+
+        function calculateResultKey(choices) {
+            const counts = { A: 0, B: 0, C: 0, D: 0 };
+            choices.forEach(c => counts[c]++);
+
+            // Find max
+            let maxVal = 0;
+            let maxKeys = [];
+            for (const key of ['A','B','C','D']) {
+                if (counts[key] > maxVal) { maxVal = counts[key]; maxKeys = [key]; }
+                else if (counts[key] === maxVal) maxKeys.push(key);
+            }
+
+            // Single dominant choice: pick it (even 2-1-1-1 counts as dominance)
+            if (maxKeys.length === 1) return maxKeys[0];
+
+            // True tie: only call MIXED for genuinely balanced patterns
+            // Tie-breaker: lean toward the more "severe" answer if it's involved (more honest)
+            const severityOrder = ['D','C','B','A'];
+            for (const key of severityOrder) {
+                if (maxKeys.includes(key)) return key === 'A' || key === 'B' ? 'MIXED' : key;
+            }
+            return 'MIXED';
+        }
+
+        function getShareText(resultKey) {
+            const res = results[resultKey];
+            return `I'm "${res.title}" ${res.emoji} on the Nomophobia Test — ${res.level}\n\nAre you the boss of your phone? Find out 👉`;
+        }
+
+        async function shareResult(resultKey) {
+            const text = getShareText(resultKey);
+            const url = window.location.href;
+            playFeedback();
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title: 'Nomophobia Test', text, url });
+                    return;
+                } catch (e) {
+                    if (e.name === 'AbortError') return;
+                }
+            }
+            // Fallback: copy to clipboard
+            try {
+                await navigator.clipboard.writeText(`${text} ${url}`);
+                showToast('Copied to clipboard ✓');
+            } catch (e) {
+                showToast('Could not copy — try again');
+            }
+        }
+
+        function togglePresenterNote() {
+            const note = document.getElementById('presenter-note');
+            const toggle = document.getElementById('presenter-toggle');
+            note.classList.toggle('open');
+            toggle.textContent = note.classList.contains('open')
+                ? '🎤 Hide presenter notes'
+                : '🎤 Show presenter notes';
+        }
+
+        function renderResult() {
+            topBar.style.display = 'none';
+            const resultKey = calculateResultKey(userChoices);
+            const res = results[resultKey];
+            document.body.style.backgroundColor = res.theme.bg;
+
+            let presenterHTML = '';
+            if (resultKey === 'D' || resultKey === 'MIXED') {
+                const noteText = resultKey === 'D'
+                    ? `"Look at this. Many of us are laughing, but we are actually these Digital Zombies. We think phones are our tools, but honestly... are we the tools of our phones? Let's talk about Nomophobia..."`
+                    : `"We try to hide our addiction, acting like we can control it. But deep down, are we pretending? Let's face the reality and talk about Nomophobia..."`;
+                presenterHTML = `
+                    <button id="presenter-toggle" class="presenter-toggle" onclick="togglePresenterNote()">
+                        🎤 Show presenter notes
+                    </button>
+                    <div class="presenter-note" id="presenter-note">
+                        <b>Presenter Transition:</b><br>${noteText}
+                    </div>
+                `;
+            }
+
+            const choicesTrail = userChoices.map(c =>
+                `<span class="choice-dot ${c}">${c}</span>`
+            ).join('');
+
+            container.innerHTML = `
+                <div class="card slide-in ${res.theme.customClass || ''}" 
+                     style="background-color: ${res.theme.bg}; 
+                            border: 2px solid ${res.theme.border}; 
+                            color: ${res.theme.text};">
+                    <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <div class="stage-title" style="color: ${res.theme.text}; opacity: 0.7;">Your Profile</div>
+                        <div class="giant-emoji">${res.emoji}</div>
+                        <h2 class="question-title" style="font-size: 1.8rem; margin-bottom: 2px;">${res.title}</h2>
+                        <div class="dependency-level center-text" style="color: ${res.theme.accent};">${res.level}</div>
+                        <div class="result-box" style="color: ${res.theme.text};">
+                            <div class="snarky-copy">"${res.copy}"</div>
+                        </div>
+                        <div class="choices-trail" aria-label="Your answers">${choicesTrail}</div>
+                        ${presenterHTML}
+                    </div>
+                    <div class="action-row">
+                        <button class="btn start-btn share-btn" 
+                                style="color: ${res.theme.text};"
+                                onclick="shareResult('${resultKey}')"
+                                aria-label="Share result">📤</button>
+                        <button class="btn start-btn" 
+                                style="background-color: ${res.theme.text}; color: ${res.theme.bg};" 
+                                onclick="playFeedback(); resetQuiz()">
+                            Test Again 🔄
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.querySelector('.card').scrollTop = 0;
+        }
+
+        function resetQuiz() {
+            currentQ = -1;
+            userChoices = [];
+            transition(renderStart);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (isAnimating) return;
+
+            // Question screen: 1-4 or A-D
+            if (currentQ >= 0 && currentQ < questions.length) {
+                let keyIdx = -1;
+                if (e.key >= '1' && e.key <= '4') keyIdx = parseInt(e.key) - 1;
+                else if (['a','b','c','d'].includes(e.key.toLowerCase())) {
+                    keyIdx = ['a','b','c','d'].indexOf(e.key.toLowerCase());
+                }
+                if (keyIdx >= 0) {
+                    const btns = container.querySelectorAll('.btn[data-key]');
+                    if (btns[keyIdx]) {
+                        e.preventDefault();
+                        btns[keyIdx].click();
+                    }
+                }
+                if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    goBack();
+                }
+            }
+            // Start / result: Enter to advance
+            else if (e.key === 'Enter') {
+                const primaryBtn = container.querySelector('.start-btn:not(.share-btn)');
+                if (primaryBtn) {
+                    e.preventDefault();
+                    primaryBtn.click();
+                }
+            }
+        });
+        // ============================================================
+        // PRESENTER MODE — live multiplayer dashboard
+        // ============================================================
+
+        function renderFirebaseSetupNeeded() {
+            topBar.style.display = 'none';
+            container.innerHTML = `
+                <div class="card slide-in center-text" style="justify-content: center;">
+                    <div class="giant-emoji">🔧</div>
+                    <h2 class="question-title">Setup needed</h2>
+                    <p class="question-desc">Presenter mode needs Firebase to sync answers across devices.</p>
+                    <div class="setup-warning">
+                        <b>Quick setup (~10 min):</b>
+                        Open this HTML file in a code editor and follow the comment block at the very top. You'll create a Firebase project, then paste the config where it says <code>PASTE_YOUR_FIREBASE_CONFIG_HERE</code>. Reload, and you're done.
+                    </div>
+                    <a class="presenter-link" onclick="window.location.href=window.location.pathname">← back to single-player test</a>
+                </div>
+            `;
+        }
+
+        async function renderPresenterStart() {
+            topBar.style.display = 'none';
+            document.body.style.backgroundColor = 'var(--bg)';
+
+            if (!FIREBASE_ENABLED || !db) {
+                renderFirebaseSetupNeeded();
+                return;
+            }
+
+            // Loading state while we set up the session
+            container.innerHTML = `
+                <div class="card slide-in center-text" style="justify-content: center;">
+                    <div class="giant-emoji">⏳</div>
+                    <p class="question-desc">Creating session...</p>
+                </div>
+            `;
+
+            try {
+                presenterSessionCode = await generateUniqueSessionCode();
+                await createSession(presenterSessionCode);
+            } catch (e) {
+                console.error('Failed to create session:', e);
+                container.innerHTML = `
+                    <div class="card slide-in center-text" style="justify-content: center;">
+                        <div class="giant-emoji">⚠️</div>
+                        <h2 class="question-title">Connection failed</h2>
+                        <p class="question-desc">Could not reach Firebase. Check your config and the Realtime Database rules.</p>
+                        <a class="presenter-link" onclick="window.location.reload()">↻ Try again</a>
+                    </div>
+                `;
+                return;
+            }
+
+            // Subscribe to live updates
+            presenterUnsubscribe = subscribeToSession(presenterSessionCode, (participants) => {
+                latestParticipants = participants;
+                updatePresenterDashboard();
+            });
+
+            renderPresenterDashboard();
+        }
+
+        function computeDistribution(participants) {
+            const dist = questions.map(() => ({ A: 0, B: 0, C: 0, D: 0, total: 0 }));
+            let joined = 0, finished = 0;
+            for (const uid in participants) {
+                const p = participants[uid];
+                joined++;
+                const answers = p.answers || {};
+                const ansKeys = Object.keys(answers);
+                if (ansKeys.length >= questions.length) finished++;
+                for (const qIdx of ansKeys) {
+                    const key = answers[qIdx];
+                    if (dist[qIdx] && ['A','B','C','D'].includes(key)) {
+                        dist[qIdx][key]++;
+                        dist[qIdx].total++;
+                    }
+                }
+            }
+            return { dist, joined, finished };
+        }
+
+        function renderPresenterDashboard() {
+            const audienceUrl = getAudienceSessionUrl(presenterSessionCode);
+            const qr = generateQR(audienceUrl, 120);
+            const qrHTML = qr
+                ? `<div class="dash-qr">${qr}</div>`
+                : `<div class="dash-qr" style="padding:14px; font-size:0.65rem;">${audienceUrl}</div>`;
+
+            container.innerHTML = `
+                <div class="card slide-in" id="dashboard-card">
+                    <div class="dash-header">
+                        <div class="dash-code-block">
+                            ${qrHTML}
+                            <div>
+                                <div class="dash-code-text">Join Code</div>
+                                <div class="dash-code-number">${presenterSessionCode}</div>
+                                <div class="dash-url">${audienceUrl.replace(/^https?:\/\//,'')}</div>
+                            </div>
+                        </div>
+                        <div class="dash-stats">
+                            <div class="dash-stat-num" id="dash-joined">0</div>
+                            <div class="dash-stat-label">Joined · <span id="dash-finished">0</span> finished</div>
+                            <div class="dash-status"><span class="dot"></span>LIVE</div>
+                        </div>
+                    </div>
+
+                    <div id="dash-body">
+                        <div class="waiting-hint">
+                            👀 Waiting for first answer... Audience scans the QR code or types the URL.
+                        </div>
+                    </div>
+
+                    <button class="btn reveal-btn" id="reveal-btn" disabled onclick="revealVerdict()">
+                        🎭 Reveal the Verdict
+                    </button>
+                </div>
+            `;
+
+            // Apply current participants if any
+            updatePresenterDashboard();
+        }
+
+        function updatePresenterDashboard() {
+            const card = document.getElementById('dashboard-card');
+            if (!card) return;
+
+            const { dist, joined, finished } = computeDistribution(latestParticipants);
+
+            const joinedEl = document.getElementById('dash-joined');
+            const finishedEl = document.getElementById('dash-finished');
+            if (joinedEl) joinedEl.textContent = joined;
+            if (finishedEl) finishedEl.textContent = finished;
+
+            const revealBtn = document.getElementById('reveal-btn');
+            const anyAnswer = dist.some(d => d.total > 0);
+            if (revealBtn) revealBtn.disabled = !anyAnswer;
+
+            const body = document.getElementById('dash-body');
+            if (!body) return;
+
+            if (!anyAnswer) {
+                body.innerHTML = `
+                    <div class="waiting-hint">
+                        ${joined === 0
+                            ? '👀 Waiting for first audience to join... Share the QR code or join code.'
+                            : `🙋 ${joined} joined — waiting for first answer...`}
+                    </div>
+                `;
+                return;
+            }
+
+            body.innerHTML = `
+                <div class="dist-grid">
+                    ${questions.map((q, idx) => renderDistCard(q, idx, dist[idx])).join('')}
+                </div>
+            `;
+        }
+
+        function renderDistCard(q, idx, d) {
+            if (d.total === 0) {
+                return `
+                    <div class="dist-card">
+                        <div class="dist-q-label">
+                            <span><span class="emoji">${q.emoji}</span>Q${idx + 1}: ${q.title}</span>
+                            <span class="dist-q-count">— no votes</span>
+                        </div>
+                        <div class="dist-bars"><div class="dist-bar empty" style="width:100%;">awaiting</div></div>
+                    </div>
+                `;
+            }
+            const segments = ['A','B','C','D'].map(k => {
+                const pct = (d[k] / d.total) * 100;
+                if (pct === 0) return '';
+                const label = pct >= 14 ? `${k} ${Math.round(pct)}%` : '';
+                return `<div class="dist-bar ${k}" style="width:${pct}%;" title="${k}: ${d[k]} (${Math.round(pct)}%)">${label}</div>`;
+            }).join('');
+            return `
+                <div class="dist-card">
+                    <div class="dist-q-label">
+                        <span><span class="emoji">${q.emoji}</span>Q${idx + 1}: ${q.title}</span>
+                        <span class="dist-q-count">${d.total} votes</span>
+                    </div>
+                    <div class="dist-bars">${segments}</div>
+                </div>
+            `;
+        }
+
+        function computeRoomVerdict(participants) {
+            // Tally every answer across every participant
+            const totals = { A: 0, B: 0, C: 0, D: 0 };
+            let totalAnswers = 0;
+            for (const uid in participants) {
+                const answers = (participants[uid] && participants[uid].answers) || {};
+                for (const qIdx in answers) {
+                    const k = answers[qIdx];
+                    if (['A','B','C','D'].includes(k)) {
+                        totals[k]++;
+                        totalAnswers++;
+                    }
+                }
+            }
+            // Find dominant
+            let maxVal = 0, maxKeys = [];
+            for (const k of ['A','B','C','D']) {
+                if (totals[k] > maxVal) { maxVal = totals[k]; maxKeys = [k]; }
+                else if (totals[k] === maxVal && maxVal > 0) maxKeys.push(k);
+            }
+            let resultKey;
+            if (totalAnswers === 0) resultKey = 'MIXED';
+            else if (maxKeys.length === 1) resultKey = maxKeys[0];
+            else if (maxKeys.includes('D')) resultKey = 'D';
+            else if (maxKeys.includes('C')) resultKey = 'C';
+            else resultKey = 'MIXED';
+
+            // Weighted dependency
+            const weights = { A: 0, B: 25, C: 70, D: 100 };
+            const depLevel = totalAnswers > 0
+                ? Math.round((totals.A*weights.A + totals.B*weights.B + totals.C*weights.C + totals.D*weights.D) / totalAnswers)
+                : 0;
+
+            return { resultKey, depLevel, totalAnswers, totals };
+        }
+
+        function revealVerdict() {
+            playFeedback();
+            const { resultKey, depLevel, totalAnswers } = computeRoomVerdict(latestParticipants);
+            const { dist, joined, finished } = computeDistribution(latestParticipants);
+            const res = results[resultKey];
+
+            document.body.style.backgroundColor = res.theme.bg;
+
+            container.innerHTML = `
+                <div class="card slide-in ${res.theme.customClass || ''}"
+                     style="background-color: ${res.theme.bg};
+                            border: 2px solid ${res.theme.border};
+                            color: ${res.theme.text};">
+                    <div class="dash-header" style="border-bottom-color: ${res.theme.border};">
+                        <div>
+                            <div class="dash-code-text" style="color: ${res.theme.text}; opacity: 0.7;">Your Audience Is...</div>
+                            <div style="display:flex; align-items:center; gap:14px; margin-top:6px;">
+                                <span style="font-size:3.5rem; line-height:1;">${res.emoji}</span>
+                                <div>
+                                    <div style="font-size:2rem; font-weight:900; line-height:1.1;">${res.title}</div>
+                                    <div style="font-size:0.95rem; font-weight:700; opacity:0.8; color: ${res.theme.accent};">
+                                        Room Dependency: ${depLevel}% · ${joined} joined · ${finished} finished
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="result-box" style="color: ${res.theme.text}; margin: 0 0 18px 0;">
+                        <div class="snarky-copy">"${res.copy}"</div>
+                    </div>
+
+                    <div class="dist-grid">
+                        ${questions.map((q, idx) => renderDistCard(q, idx, dist[idx])).join('')}
+                    </div>
+
+                    <div class="action-row">
+                        <button class="btn start-btn share-btn"
+                                style="color: ${res.theme.text};"
+                                onclick="window.location.href=window.location.pathname"
+                                aria-label="Exit presenter">🚪</button>
+                        <button class="btn start-btn"
+                                style="background-color: ${res.theme.text}; color: ${res.theme.bg};"
+                                onclick="playFeedback(); newPresenterSession()">
+                            New Session 🔄
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function newPresenterSession() {
+            if (presenterUnsubscribe) { presenterUnsubscribe(); presenterUnsubscribe = null; }
+            latestParticipants = {};
+            transition(renderPresenterStart);
+        }
+
+        // ============================================================
+        // INIT
+        // ============================================================
+        if (mode === 'presenter') {
+            renderPresenterStart();
+        } else {
+            renderStart();
+        }
+    </script>
+</body>
+</html>
